@@ -157,7 +157,11 @@ func VerifyStructure(b *Bundle) error {
 	manifestServices := map[string]bool{}
 	for _, s := range b.Manifest["services"].([]any) {
 		sm := s.(map[string]any)
-		manifestServices[sm["name"].(string)] = true
+		name := sm["name"].(string)
+		manifestServices[name] = true
+		if _, ok := b.Services[name]; !ok {
+			return fmt.Errorf("manifest lists service %s but service-schemas/%s.json is missing from bundle", name, name)
+		}
 	}
 
 	for file, doc := range b.Prompts {
