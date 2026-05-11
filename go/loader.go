@@ -3,8 +3,14 @@ package agentprompt
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
 	verify "github.com/lee-mcfaul2/lib-agent-prompt/pkg/verify"
+	"oras.land/oras-go/v2"
+	"oras.land/oras-go/v2/content/file"
+	"oras.land/oras-go/v2/registry/remote"
 )
 
 type Bundle struct {
@@ -21,7 +27,9 @@ func NewBundleLoader(registry string, v *Verifier) *BundleLoader {
 	return &BundleLoader{registry: registry, verifier: v}
 }
 
-// Load fetches a bundle from a local tarball path OR (Task 18) an OCI reference.
+// Load fetches a bundle from a local tarball path OR an OCI reference.
+// When BundleLoader has a registry, ref is interpreted as "<repo>:<tag>" or "<repo>@<digest>".
+// When BundleLoader has no registry, ref is interpreted as a local tarball path.
 func (l *BundleLoader) Load(ctx context.Context, ref string) (*Bundle, error) {
 	if l.registry == "" {
 		b, hash, err := verify.LoadAndHash(ref)
@@ -30,7 +38,43 @@ func (l *BundleLoader) Load(ctx context.Context, ref string) (*Bundle, error) {
 		}
 		return &Bundle{inner: b, hash: hash}, nil
 	}
-	return nil, fmt.Errorf("OCI fetch not yet implemented in library; see Task 18")
+
+	repo, err := remote.NewRepository(l.registry + "/" + strings.SplitN(ref, ":", 2)[0])
+	if err != nil {
+		return nil, fmt.Errorf("new repository: %w", err)
+	}
+	tag := "latest"
+	if parts := strings.SplitN(ref, ":", 2); len(parts) == 2 {
+		tag = parts[1]
+	}
+
+	tmpDir, err := os.MkdirTemp("", "agentprompt-fetch-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tmpDir)
+	fs, err := file.New(tmpDir)
+	if err != nil {
+		return nil, err
+	}
+	defer fs.Close()
+
+	if _, err := oras.Copy(ctx, repo, tag, fs, tag, oras.DefaultCopyOptions); err != nil {
+		return nil, fmt.Errorf("oras copy: %w", err)
+	}
+
+	entries, _ := os.ReadDir(tmpDir)
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasSuffix(name, ".tar.gz") || strings.HasSuffix(name, ".gz") {
+			b, hash, err := verify.LoadAndHash(filepath.Join(tmpDir, name))
+			if err != nil {
+				return nil, err
+			}
+			return &Bundle{inner: b, hash: hash}, nil
+		}
+	}
+	return nil, fmt.Errorf("no tar.gz layer found in fetched artifact at %s", l.registry+"/"+ref)
 }
 
 func (b *Bundle) Hash() string { return b.hash }
@@ -45,10 +89,7 @@ func (b *Bundle) Prompt(uuid string) (map[string]any, error) {
 	return nil, fmt.Errorf("prompt %s not found", uuid)
 }
 
-// Prompts returns every prompt in the bundle.
-func (b *Bundle) Prompts() map[string]map[string]any { return b.inner.Prompts }
-
-// Services returns every embedded service schema in the bundle.
+func (b *Bundle) Prompts() map[string]map[string]any  { return b.inner.Prompts }
 func (b *Bundle) Services() map[string]map[string]any { return b.inner.Services }
 
 func (b *Bundle) ManifestVersion() string {
