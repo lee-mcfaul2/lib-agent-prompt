@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-security.io/schemas/iteration-output.json",
+  "title": "Iteration output",
+  "description": "The LLM's per-iteration output envelope. Exactly one of service_calls (non-empty) or terminate is populated; the other is null.",
+  "type": "object",
+  "required": ["service_calls", "terminate"],
+  "properties": {
+    "service_calls": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["id", "args"],
+            "properties": {
+              "id":   { "type": "string", "description": "Must match an allowed_responses[].id where kind==service_call." },
+              "args": { "type": "object", "description": "Validated at runtime against the referenced request_schema_ref." }
+            }
+          }
+        }
+      ]
+    },
+    "terminate": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["id", "payload"],
+          "properties": {
+            "id":      { "type": "string", "description": "Must match an allowed_responses[].id where kind==terminate." },
+            "payload": { "type": "object", "description": "Validated at runtime against the referenced response_schema_ref." }
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "oneOf": [
+        {
+          "properties": { "service_calls": { "type": "array" }, "terminate": { "type": "null" } }
+        },
+        {
+          "properties": { "service_calls": { "type": "null" }, "terminate": { "type": "object" } }
+        }
+      ]
+    }
+  ],
+  "additionalProperties": false
+}

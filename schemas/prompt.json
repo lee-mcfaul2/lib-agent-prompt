@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-security.io/schemas/prompt.json",
+  "title": "Prompt",
+  "description": "A single agent capability: nested MCP Prompt + authorized services + allowed response shapes + cost caps.",
+  "type": "object",
+  "required": ["id", "schema_version", "prompt", "services", "allowed_responses", "cost_caps"],
+  "properties": {
+    "id":             { "$ref": "shared/uuid.json#" },
+    "schema_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "prompt":         { "$ref": "external/mcp-prompt.json#" },
+    "services": {
+      "type": "array",
+      "description": "Authorization scope: SPIFFE identities agent-gateway may invoke under this prompt's request_uuid.",
+      "items": {
+        "type": "object",
+        "required": ["name", "spiffe", "schema_digest"],
+        "properties": {
+          "name":          { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "spiffe":        { "type": "string", "pattern": "^spiffe://" },
+          "schema_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "allowed_responses": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          { "$ref": "allowed-response/service-call.json#" },
+          { "$ref": "allowed-response/terminate.json#" }
+        ]
+      }
+    },
+    "cost_caps": {
+      "type": "object",
+      "required": ["max_iterations", "max_wallclock_ms", "max_cost_usd"],
+      "properties": {
+        "max_iterations":   { "type": "integer", "minimum": 1 },
+        "max_wallclock_ms": { "type": "integer", "minimum": 1 },
+        "max_cost_usd":     { "type": "number",  "minimum": 0 }
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-security.io/schemas/response-envelope.json",
+  "title": "Response envelope",
+  "description": "Wrapper agent-gateway applies to service responses before delivering them to the sandbox. Frames the payload as data rather than instructions so the LLM does not interpret retrieved content as commands.",
+  "type": "object",
+  "required": ["envelope_version", "service", "request_id", "payload"],
+  "properties": {
+    "envelope_version": {
+      "type": "string",
+      "description": "Version of the response-envelope schema. Matches the schema-library SemVer."
+    },
+    "service": {
+      "type": "string",
+      "description": "Name of the service that produced this payload."
+    },
+    "request_id": {
+      "type": "string",
+      "description": "id from the iteration-output.service_calls[] entry that triggered this call."
+    },
+    "framing": {
+      "type": "object",
+      "description": "Display markers the gateway inserts in the prompt context.",
+      "properties": {
+        "open":  { "type": "string", "default": "<retrieved_content version=\"{envelope_version}\" service=\"{service}\">" },
+        "close": { "type": "string", "default": "</retrieved_content>" }
+      }
+    },
+    "payload": {
+      "type": "object",
+      "description": "Validated at runtime against the service's response schema (from service-schemas/<name>.json)."
+    }
+  },
+  "additionalProperties": false
+}

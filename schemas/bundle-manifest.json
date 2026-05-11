@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-security.io/schemas/bundle-manifest.json",
+  "title": "Bundle manifest",
+  "description": "Top-level manifest inside every bundle. Pins bundle version, schema-library version, prompts (by UUID + digest), services (by SPIFFE + source digest + embedded file).",
+  "type": "object",
+  "required": ["bundle_version", "schema_library_version", "build", "envelope_cost_caps", "prompts", "services"],
+  "properties": {
+    "bundle_version":         { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$" },
+    "schema_library_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "build": {
+      "type": "object",
+      "required": ["timestamp", "source_commit", "builder_id"],
+      "properties": {
+        "timestamp":     { "type": "string", "format": "date-time" },
+        "source_commit": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+        "builder_id":    { "type": "string" }
+      }
+    },
+    "envelope_cost_caps": {
+      "type": "object",
+      "required": ["max_iterations", "max_wallclock_ms", "max_cost_usd"],
+      "properties": {
+        "max_iterations":   { "type": "integer", "minimum": 1 },
+        "max_wallclock_ms": { "type": "integer", "minimum": 1 },
+        "max_cost_usd":     { "type": "number",  "minimum": 0 }
+      }
+    },
+    "prompts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "file", "digest"],
+        "properties": {
+          "id":     { "$ref": "shared/uuid.json#" },
+          "file":   { "type": "string", "pattern": "^prompts/[0-9a-f-]{36}\\.json$" },
+          "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "services": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "spiffe", "source_digest", "embedded_file"],
+        "properties": {
+          "name":          { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "spiffe":        { "type": "string", "pattern": "^spiffe://" },
+          "source_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+          "embedded_file": { "type": "string", "pattern": "^service-schemas/[a-z][a-z0-9-]*\\.json$" }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}
