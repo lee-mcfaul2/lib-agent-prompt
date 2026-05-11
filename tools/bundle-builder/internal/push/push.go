@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2"
@@ -41,6 +42,10 @@ func Push(ctx context.Context, tarballPath, ref string) (string, error) {
 	repo, err := remote.NewRepository(ref)
 	if err != nil {
 		return "", err
+	}
+	// Use plain HTTP for localhost/127.0.0.1 registries (e.g., local zot in tests).
+	if strings.HasPrefix(ref, "localhost") || strings.HasPrefix(ref, "127.0.0.1") {
+		repo.PlainHTTP = true
 	}
 	pushed, err := oras.Copy(ctx, fs, "latest", repo, "latest", oras.DefaultCopyOptions)
 	if err != nil {

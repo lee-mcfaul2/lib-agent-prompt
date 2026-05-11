@@ -2,14 +2,16 @@ package agentprompt
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	verify "github.com/lee-mcfaul2/lib-agent-prompt/pkg/verify"
+	"github.com/opencontainers/go-digest"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2"
-	"oras.land/oras-go/v2/content/file"
 	"oras.land/oras-go/v2/registry/remote"
 )
 
@@ -39,42 +41,70 @@ func (l *BundleLoader) Load(ctx context.Context, ref string) (*Bundle, error) {
 		return &Bundle{inner: b, hash: hash}, nil
 	}
 
-	repo, err := remote.NewRepository(l.registry + "/" + strings.SplitN(ref, ":", 2)[0])
+	repoRef := l.registry + "/" + strings.SplitN(ref, ":", 2)[0]
+	repo, err := remote.NewRepository(repoRef)
 	if err != nil {
 		return nil, fmt.Errorf("new repository: %w", err)
+	}
+	if strings.HasPrefix(l.registry, "localhost") || strings.HasPrefix(l.registry, "127.0.0.1") {
+		repo.PlainHTTP = true
 	}
 	tag := "latest"
 	if parts := strings.SplitN(ref, ":", 2); len(parts) == 2 {
 		tag = parts[1]
 	}
 
-	tmpDir, err := os.MkdirTemp("", "agentprompt-fetch-")
+	manifestDesc, err := oras.Resolve(ctx, repo, tag, oras.DefaultResolveOptions)
+	if err != nil {
+		return nil, fmt.Errorf("resolve %s:%s: %w", repoRef, tag, err)
+	}
+	rc, err := repo.Fetch(ctx, manifestDesc)
+	if err != nil {
+		return nil, fmt.Errorf("fetch manifest: %w", err)
+	}
+	manifestBytes, err := io.ReadAll(rc)
+	rc.Close()
 	if err != nil {
 		return nil, err
 	}
-	defer os.RemoveAll(tmpDir)
-	fs, err := file.New(tmpDir)
+	var manifest struct {
+		Layers []struct {
+			MediaType string `json:"mediaType"`
+			Digest    string `json:"digest"`
+			Size      int64  `json:"size"`
+		} `json:"layers"`
+	}
+	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
+		return nil, fmt.Errorf("parse manifest: %w", err)
+	}
+	if len(manifest.Layers) == 0 {
+		return nil, fmt.Errorf("manifest has no layers")
+	}
+
+	// Fetch the single bundle layer (we always pack as a single-layer artifact)
+	layer := manifest.Layers[0]
+	layerRC, err := repo.Fetch(ctx, mkDesc(layer.MediaType, layer.Digest, layer.Size))
+	if err != nil {
+		return nil, fmt.Errorf("fetch layer: %w", err)
+	}
+	defer layerRC.Close()
+
+	tmpFile, err := os.CreateTemp("", "agentprompt-bundle-*.tar.gz")
 	if err != nil {
 		return nil, err
 	}
-	defer fs.Close()
-
-	if _, err := oras.Copy(ctx, repo, tag, fs, tag, oras.DefaultCopyOptions); err != nil {
-		return nil, fmt.Errorf("oras copy: %w", err)
+	defer os.Remove(tmpFile.Name())
+	if _, err := io.Copy(tmpFile, layerRC); err != nil {
+		tmpFile.Close()
+		return nil, err
 	}
+	tmpFile.Close()
 
-	entries, _ := os.ReadDir(tmpDir)
-	for _, e := range entries {
-		name := e.Name()
-		if strings.HasSuffix(name, ".tar.gz") || strings.HasSuffix(name, ".gz") {
-			b, hash, err := verify.LoadAndHash(filepath.Join(tmpDir, name))
-			if err != nil {
-				return nil, err
-			}
-			return &Bundle{inner: b, hash: hash}, nil
-		}
+	b, hash, err := verify.LoadAndHash(tmpFile.Name())
+	if err != nil {
+		return nil, err
 	}
-	return nil, fmt.Errorf("no tar.gz layer found in fetched artifact at %s", l.registry+"/"+ref)
+	return &Bundle{inner: b, hash: hash}, nil
 }
 
 func (b *Bundle) Hash() string { return b.hash }
@@ -100,3 +130,10 @@ func (b *Bundle) ManifestVersion() string {
 }
 
 func (b *Bundle) Manifest() map[string]any { return b.inner.Manifest }
+
+// mkDesc constructs a minimal descriptor for Fetch.
+func mkDesc(mediaType, digest string, size int64) ocispec.Descriptor {
+	return ocispec.Descriptor{MediaType: mediaType, Digest: digestParse(digest), Size: size}
+}
+
+func digestParse(s string) digest.Digest { return digest.Digest(s) }
