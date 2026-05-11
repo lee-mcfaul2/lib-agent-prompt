@@ -58,7 +58,7 @@ func Build(ctx context.Context, opts Options) error {
 		return fmt.Errorf("copy prompts: %w", err)
 	}
 
-	services, err := embedServicesPlaceholder(opts.Services, filepath.Join(opts.Output, "service-schemas"))
+	services, err := embedServices(ctx, opts.Services, filepath.Join(opts.Output, "service-schemas"), opts.RegistryBase, opts.AllowPlaceholder)
 	if err != nil {
 		return fmt.Errorf("embed services: %w", err)
 	}
@@ -132,7 +132,7 @@ func copyPrompts(src, dst string) ([]prompt, error) {
 	return out, nil
 }
 
-func embedServicesPlaceholder(src, dst string) ([]service, error) {
+func embedServices(ctx context.Context, src, dst, registryBase string, allowPlaceholder bool) ([]service, error) {
 	if err := os.MkdirAll(dst, 0o755); err != nil {
 		return nil, err
 	}
@@ -140,6 +140,7 @@ func embedServicesPlaceholder(src, dst string) ([]service, error) {
 	if err != nil {
 		return nil, err
 	}
+	const placeholder = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
 	var out []service
 	for rel, doc := range docs {
 		name, _ := doc["name"].(string)
@@ -148,8 +149,23 @@ func embedServicesPlaceholder(src, dst string) ([]service, error) {
 		}
 		spiffe, _ := doc["spiffe"].(string)
 		digest, _ := doc["source_digest"].(string)
+
+		var payload []byte
+		if digest == placeholder {
+			if !allowPlaceholder {
+				return nil, fmt.Errorf("service %s has placeholder digest; pass --allow-placeholder to permit", name)
+			}
+			payload = []byte("{}")
+		} else {
+			ref := registryBase + "/" + name
+			payload, err = PullServiceSchema(ctx, ref, digest)
+			if err != nil {
+				return nil, fmt.Errorf("pull %s: %w", name, err)
+			}
+		}
+
 		embeddedRel := filepath.Join("service-schemas", name+".json")
-		if err := os.WriteFile(filepath.Join(dst, name+".json"), []byte("{}"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dst, name+".json"), payload, 0o644); err != nil {
 			return nil, err
 		}
 		out = append(out, service{

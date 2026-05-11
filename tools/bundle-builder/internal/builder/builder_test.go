@@ -23,6 +23,7 @@ func TestBuild_ExampleBundle(t *testing.T) {
 		BuildTime:        time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC),
 		SourceCommit:     "deadbeef",
 		BuilderID:        "test-builder",
+		AllowPlaceholder: true,
 	}
 
 	if err := Build(context.Background(), opts); err != nil {
