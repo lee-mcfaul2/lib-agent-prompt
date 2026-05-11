@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/lee-mcfaul2/lib-agent-prompt/tools/verifier/internal/verify"
+	verify "github.com/lee-mcfaul2/lib-agent-prompt/pkg/verify"
 	"github.com/spf13/cobra"
 )
 
