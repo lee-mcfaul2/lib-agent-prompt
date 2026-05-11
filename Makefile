@@ -25,3 +25,8 @@ verify-reproducible:
 
 clean:
 	rm -rf out/ dist/
+
+.PHONY: demo
+demo: bundle-example verify-example
+	@echo
+	@echo "Demo complete. Bundle at out/bundle-0.1.0-example.tar.gz"
