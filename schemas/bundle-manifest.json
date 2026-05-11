@@ -7,7 +7,7 @@
   "required": ["bundle_version", "schema_library_version", "build", "envelope_cost_caps", "prompts", "services"],
   "properties": {
     "bundle_version":         { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$" },
-    "schema_library_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "schema_library_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$" },
     "build": {
       "type": "object",
       "required": ["timestamp", "source_commit", "builder_id"],
