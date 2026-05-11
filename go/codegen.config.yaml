@@ -1,0 +1,6 @@
+# Configuration for Go codegen from schemas/
+# Tool: quicktype (https://github.com/quicktype/quicktype)
+# Run: bash codegen.sh
+output_package: types
+output_dir: generated
+source_schemas_glob: "../schemas/**/*.json"
