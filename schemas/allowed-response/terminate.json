@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-security.io/schemas/allowed-response/terminate.json",
+  "title": "Allowed response: terminate",
+  "description": "One entry in a prompt's allowed_responses list that ends the conversation and returns to the external caller.",
+  "type": "object",
+  "required": ["id", "kind", "response_schema_ref"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "kind": { "const": "terminate" },
+    "response_schema_ref": {
+      "type": "string",
+      "description": "Relative path within the bundle to the JSON Schema for the terminating response payload."
+    }
+  },
+  "additionalProperties": false
+}
