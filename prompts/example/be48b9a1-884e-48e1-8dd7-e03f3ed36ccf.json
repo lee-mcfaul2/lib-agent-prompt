@@ -1,0 +1,50 @@
+{
+  "id": "be48b9a1-884e-48e1-8dd7-e03f3ed36ccf",
+  "schema_version": "0.1.0",
+  "prompt": {
+    "name": "example-list-users",
+    "description": "Example: list users by simple criteria. Demonstrates a single-service prompt with a service_call and two terminate options.",
+    "arguments": [
+      { "name": "filter_email_domain", "description": "Restrict results to users whose email matches this domain.", "required": false }
+    ],
+    "messages": [
+      {
+        "role": "system",
+        "content": {
+          "type": "text",
+          "text": "You are an example agent that lists users from the postgres service. Given the user's request, you may either: (1) call postgresql-service.get_users with an optional email_domain filter, or (2) terminate immediately with an empty result if the request cannot be honored. After receiving the service response, you must emit a terminate response containing the user list. Do not invent users; only return data returned by the service."
+        }
+      }
+    ]
+  },
+  "services": [
+    {
+      "name": "postgresql-service",
+      "spiffe": "spiffe://ai-security.io/ns/mcp/sa/postgresql-service",
+      "schema_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "allowed_responses": [
+    {
+      "id": "call-postgres-get-users",
+      "kind": "service_call",
+      "service": "postgresql-service",
+      "request_schema_ref": "service-schemas/postgresql-service.json#/tools/get_users/inputSchema"
+    },
+    {
+      "id": "terminate-empty",
+      "kind": "terminate",
+      "response_schema_ref": "schemas/shared/error-envelope.json"
+    },
+    {
+      "id": "terminate-user-list",
+      "kind": "terminate",
+      "response_schema_ref": "service-schemas/postgresql-service.json#/tools/get_users/outputSchema"
+    }
+  ],
+  "cost_caps": {
+    "max_iterations": 5,
+    "max_wallclock_ms": 30000,
+    "max_cost_usd": 0.50
+  }
+}
