@@ -1,0 +1,29 @@
+# Build outputs
+/out/
+/dist/
+*.tar.gz
+*.sig
+
+# Language-specific build artifacts
+go/bin/
+go/vendor/
+python/dist/
+python/*.egg-info/
+python/__pycache__/
+python/.pytest_cache/
+rust/target/
+java/target/
+java/build/
+dotnet/bin/
+dotnet/obj/
+javascript/node_modules/
+javascript/dist/
+typescript/dist/
+*.log
+
+# OS / editor
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
