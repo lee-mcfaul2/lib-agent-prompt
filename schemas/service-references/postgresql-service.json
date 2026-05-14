@@ -1,6 +1,0 @@
-{
-  "name": "postgresql-service",
-  "spiffe": "spiffe://ai-security.io/ns/mcp/sa/postgresql-service",
-  "source_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-  "description": "Reference postgres-backed service. Placeholder digest; replaced once agent-sql-mcp publishes its first signed mcp-schema.json."
-}
