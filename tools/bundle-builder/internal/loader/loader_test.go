@@ -1,55 +1,64 @@
 package loader
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 )
 
-func TestLoadJSONFile_Good(t *testing.T) {
-	dir := t.TempDir()
-	p := filepath.Join(dir, "x.json")
-	if err := os.WriteFile(p, []byte(`{"a":1,"b":"two"}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	doc, err := LoadJSONFile(p)
+func TestLoadServices(t *testing.T) {
+	root := filepath.Join("testdata", "good-bundle")
+	svc, err := LoadServices(root)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("LoadServices: %v", err)
 	}
-	if doc["a"].(float64) != 1 || doc["b"].(string) != "two" {
-		t.Fatalf("bad doc: %v", doc)
+	if len(svc) != 2 {
+		t.Fatalf("services len = %d, want 2", len(svc))
+	}
+	byMCP := map[string]Service{}
+	for _, s := range svc {
+		byMCP[s.MCP] = s
+	}
+	kb, ok := byMCP["kb"]
+	if !ok {
+		t.Fatal("missing kb")
+	}
+	if len(kb.Tools) != 2 {
+		t.Errorf("kb tools = %d, want 2", len(kb.Tools))
+	}
+	for _, tool := range kb.Tools {
+		if tool.RequestDigest == "" || tool.ResponseDigest == "" {
+			t.Errorf("kb.%s: missing digest", tool.Name)
+		}
+	}
+
+	audit := byMCP["audit_db"]
+	if len(audit.Tools) != 1 {
+		t.Errorf("audit_db tools = %d, want 1", len(audit.Tools))
+	}
+	if audit.Tools[0].Name != "search" {
+		t.Errorf("audit_db tool name = %q", audit.Tools[0].Name)
 	}
 }
 
-func TestLoadJSONFile_Malformed(t *testing.T) {
-	dir := t.TempDir()
-	p := filepath.Join(dir, "x.json")
-	if err := os.WriteFile(p, []byte(`{not json`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := LoadJSONFile(p); err == nil {
-		t.Fatal("expected error on malformed JSON")
+func TestLoadServicesOrphan(t *testing.T) {
+	root := filepath.Join("testdata", "orphan-request")
+	if _, err := LoadServices(root); err == nil {
+		t.Fatal("expected error for request without paired response")
 	}
 }
 
-func TestLoadAllJSON_Recursive(t *testing.T) {
-	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "sub"), 0o755)
-	os.WriteFile(filepath.Join(dir, "a.json"), []byte(`{"x":1}`), 0o644)
-	os.WriteFile(filepath.Join(dir, "sub", "b.json"), []byte(`{"y":2}`), 0o644)
-	os.WriteFile(filepath.Join(dir, "skip.txt"), []byte("ignore me"), 0o644)
+func TestLoadServicesEmpty(t *testing.T) {
+	root := filepath.Join("testdata", "empty")
+	if _, err := LoadServices(root); err == nil {
+		t.Fatal("expected error for empty bundle")
+	}
+}
 
-	docs, err := LoadAllJSON(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(docs) != 2 {
-		t.Fatalf("want 2 docs, got %d", len(docs))
-	}
-	if _, ok := docs["a.json"]; !ok {
-		t.Fatal("missing a.json")
-	}
-	if _, ok := docs[filepath.Join("sub", "b.json")]; !ok {
-		t.Fatal("missing sub/b.json")
+func TestDigestDeterministic(t *testing.T) {
+	root := filepath.Join("testdata", "good-bundle")
+	a, _ := LoadServices(root)
+	b, _ := LoadServices(root)
+	if a[0].Tools[0].RequestDigest != b[0].Tools[0].RequestDigest {
+		t.Errorf("digest not deterministic: %q vs %q", a[0].Tools[0].RequestDigest, b[0].Tools[0].RequestDigest)
 	}
 }
