@@ -1,70 +1,109 @@
 package builder
 
 import (
-	"context"
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/lee-mcfaul2/lib-agent-prompt/tools/bundle-builder/internal/loader"
 )
 
-func TestBuild_ExampleBundle(t *testing.T) {
-	repoRoot := findRepoRoot(t)
-	out := t.TempDir()
-
-	opts := Options{
-		SchemaLib:        filepath.Join(repoRoot, "schemas"),
-		Prompts:          filepath.Join(repoRoot, "prompts", "example"),
-		Services:         filepath.Join(repoRoot, "schemas", "service-references"),
-		Output:           out,
-		Version:          "0.1.0-test",
-		SchemaLibVersion: "0.1.0",
-		BuildTime:        time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC),
-		SourceCommit:     "deadbeef",
-		BuilderID:        "test-builder",
-		AllowPlaceholder: true,
-	}
-
-	if err := Build(context.Background(), opts); err != nil {
-		t.Fatal(err)
-	}
-
-	manifestPath := filepath.Join(out, "bundle-manifest.json")
-	data, err := os.ReadFile(manifestPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var m map[string]any
-	if err := json.Unmarshal(data, &m); err != nil {
-		t.Fatal(err)
-	}
-	if m["bundle_version"] != "0.1.0-test" {
-		t.Errorf("bundle_version wrong: %v", m["bundle_version"])
-	}
-	if prompts := m["prompts"].([]any); len(prompts) == 0 {
-		t.Error("expected at least one prompt in manifest")
-	}
-	if services := m["services"].([]any); len(services) == 0 {
-		t.Error("expected at least one service in manifest")
-	}
-
-	if _, err := os.Stat(filepath.Join(out, "schemas", "prompt.json")); err != nil {
-		t.Errorf("schemas/prompt.json not snapshotted: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(out, "service-schemas", "postgresql-service.json")); err != nil {
-		t.Errorf("service-schemas/postgresql-service.json missing: %v", err)
+func sampleServices() []loader.Service {
+	return []loader.Service{
+		{
+			MCP: "kb",
+			Tools: []loader.Tool{
+				{
+					Name:           "search",
+					RequestDigest:  "sha256:" + hex64(),
+					ResponseDigest: "sha256:" + hex64(),
+					RequiresPermissions: []string{"kb:read"},
+				},
+				{
+					Name:           "fetch",
+					RequestDigest:  "sha256:" + hex64(),
+					ResponseDigest: "sha256:" + hex64(),
+				},
+			},
+		},
 	}
 }
 
-func findRepoRoot(t *testing.T) string {
-	t.Helper()
-	wd, _ := os.Getwd()
-	for d := wd; d != "/"; d = filepath.Dir(d) {
-		if _, err := os.Stat(filepath.Join(d, "go.mod")); err == nil && filepath.Base(d) == "bundle-builder" {
-			return filepath.Join(d, "..", "..")
-		}
+func hex64() string {
+	out := make([]byte, 64)
+	for i := range out {
+		out[i] = 'a'
 	}
-	t.Fatal("could not find repo root")
-	return ""
+	return string(out)
+}
+
+func TestBuildManifestShape(t *testing.T) {
+	m, err := BuildManifest(BuildInput{
+		BundleVersion:        "1.0.0",
+		SchemaLibraryVersion: "1.0.0",
+		Build: BuildProvenance{
+			Timestamp:     time.Date(2026, 5, 13, 0, 0, 0, 0, time.UTC),
+			SourceCommit:  "abc1234",
+			BuilderID:     "bundle-builder-test",
+		},
+		EnvelopeCostCaps: EnvelopeCostCaps{
+			MaxIterations:  8,
+			MaxWallclockMs: 300000,
+			MaxCostUSD:     1.0,
+		},
+		Services: sampleServices(),
+	})
+	if err != nil {
+		t.Fatalf("BuildManifest: %v", err)
+	}
+
+	raw, _ := json.MarshalIndent(m, "", "  ")
+	t.Logf("manifest:\n%s", raw)
+
+	if m.BundleVersion != "1.0.0" {
+		t.Errorf("BundleVersion = %q", m.BundleVersion)
+	}
+	if len(m.Services) != 1 {
+		t.Fatalf("services len = %d", len(m.Services))
+	}
+	if m.Services[0].MCP != "kb" {
+		t.Errorf("MCP = %q", m.Services[0].MCP)
+	}
+	if len(m.Services[0].Tools) != 2 {
+		t.Fatalf("tools len = %d", len(m.Services[0].Tools))
+	}
+	if m.Services[0].Tools[0].Name != "fetch" {
+		t.Errorf("tools[0].Name = %q (expected alphabetized: fetch before search)", m.Services[0].Tools[0].Name)
+	}
+}
+
+func TestBuildManifestWriteFlagDefaultsFalse(t *testing.T) {
+	in := BuildInput{
+		BundleVersion:        "1.0.0",
+		SchemaLibraryVersion: "1.0.0",
+		Build:                BuildProvenance{Timestamp: time.Now(), SourceCommit: "abc1234", BuilderID: "x"},
+		EnvelopeCostCaps:     EnvelopeCostCaps{MaxIterations: 1, MaxWallclockMs: 1, MaxCostUSD: 0},
+		Services: []loader.Service{
+			{MCP: "kb", Tools: []loader.Tool{{Name: "search", RequestDigest: "sha256:" + hex64(), ResponseDigest: "sha256:" + hex64()}}},
+		},
+	}
+	m, _ := BuildManifest(in)
+	if m.Services[0].Tools[0].Write {
+		t.Error("default Write should be false")
+	}
+	if m.Services[0].Tools[0].RequiresPermissions != nil {
+		t.Errorf("default RequiresPermissions should be nil, got %v", m.Services[0].Tools[0].RequiresPermissions)
+	}
+}
+
+func TestBuildManifestEmptyServicesError(t *testing.T) {
+	_, err := BuildManifest(BuildInput{
+		BundleVersion:        "1.0.0",
+		SchemaLibraryVersion: "1.0.0",
+		Build:                BuildProvenance{Timestamp: time.Now(), SourceCommit: "abc1234", BuilderID: "x"},
+		EnvelopeCostCaps:     EnvelopeCostCaps{MaxIterations: 1, MaxWallclockMs: 1, MaxCostUSD: 0},
+	})
+	if err == nil {
+		t.Fatal("expected error for empty services")
+	}
 }

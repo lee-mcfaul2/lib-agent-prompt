@@ -1,231 +1,100 @@
+// Package builder assembles the bundle manifest from a loaded service catalog.
 package builder
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
-	"github.com/lee-mcfaul2/lib-agent-prompt/tools/bundle-builder/internal/jcs"
 	"github.com/lee-mcfaul2/lib-agent-prompt/tools/bundle-builder/internal/loader"
 )
 
-type Options struct {
-	SchemaLib        string
-	Prompts          string
-	Services         string
-	Output           string
-	Version          string
-	SchemaLibVersion string
-	BuildTime        time.Time
-	SourceCommit    string
-	BuilderID       string
-	// Reserved for Task 10:
-	RegistryBase     string
-	AllowPlaceholder bool
+// Manifest is the JSON shape written to bundle-manifest.json at the
+// bundle root. The schema lives at schemas/bundle-manifest.json.
+type Manifest struct {
+	BundleVersion        string            `json:"bundle_version"`
+	SchemaLibraryVersion string            `json:"schema_library_version"`
+	Build                BuildProvenance   `json:"build"`
+	EnvelopeCostCaps     EnvelopeCostCaps  `json:"envelope_cost_caps"`
+	Services             []ManifestService `json:"services"`
 }
 
-type prompt struct {
-	ID   string `json:"id"`
-	File string `json:"file"`
-	Path string `json:"-"`
+type BuildProvenance struct {
+	Timestamp    time.Time `json:"timestamp"`
+	SourceCommit string    `json:"source_commit"`
+	BuilderID    string    `json:"builder_id"`
 }
 
-type service struct {
-	Name         string `json:"name"`
-	Spiffe       string `json:"spiffe"`
-	SourceDigest string `json:"source_digest"`
-	EmbeddedFile string `json:"embedded_file"`
+type EnvelopeCostCaps struct {
+	MaxIterations  int     `json:"max_iterations"`
+	MaxWallclockMs int     `json:"max_wallclock_ms"`
+	MaxCostUSD     float64 `json:"max_cost_usd"`
 }
 
-// Build assembles the bundle directory tree.
-func Build(ctx context.Context, opts Options) error {
-	if err := os.MkdirAll(opts.Output, 0o755); err != nil {
-		return err
-	}
-
-	if err := copyDir(opts.SchemaLib, filepath.Join(opts.Output, "schemas")); err != nil {
-		return fmt.Errorf("snapshot schemas: %w", err)
-	}
-
-	prompts, err := copyPrompts(opts.Prompts, filepath.Join(opts.Output, "prompts"))
-	if err != nil {
-		return fmt.Errorf("copy prompts: %w", err)
-	}
-
-	services, err := embedServices(ctx, opts.Services, filepath.Join(opts.Output, "service-schemas"), opts.RegistryBase, opts.AllowPlaceholder)
-	if err != nil {
-		return fmt.Errorf("embed services: %w", err)
-	}
-
-	return writeManifest(opts, prompts, services)
+type ManifestService struct {
+	MCP   string         `json:"mcp"`
+	Tools []ManifestTool `json:"tools"`
 }
 
-func copyDir(src, dst string) error {
-	return filepath.Walk(src, func(p string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(src, p)
-		if err != nil {
-			return err
-		}
-		target := filepath.Join(dst, rel)
-		if info.IsDir() {
-			return os.MkdirAll(target, 0o755)
-		}
-		return copyFile(p, target)
-	})
+type ManifestTool struct {
+	Name                string   `json:"name"`
+	RequestDigest       string   `json:"request_digest"`
+	ResponseDigest      string   `json:"response_digest"`
+	Write               bool     `json:"write,omitempty"`
+	RequiresPermissions []string `json:"requires_permissions,omitempty"`
 }
 
-func copyFile(src, dst string) error {
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return err
-	}
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	_, err = io.Copy(out, in)
-	return err
+// BuildInput is everything the builder needs to assemble a manifest.
+type BuildInput struct {
+	BundleVersion        string
+	SchemaLibraryVersion string
+	Build                BuildProvenance
+	EnvelopeCostCaps     EnvelopeCostCaps
+	Services             []loader.Service
 }
 
-func copyPrompts(src, dst string) ([]prompt, error) {
-	if err := os.MkdirAll(dst, 0o755); err != nil {
-		return nil, err
+// BuildManifest produces a Manifest from the loaded service catalog. The
+// returned manifest has services alphabetized by MCP and each service's
+// tools alphabetized by name (defense-in-depth — the loader already sorts,
+// but unit-test callers may pass unsorted input).
+func BuildManifest(in BuildInput) (*Manifest, error) {
+	if len(in.Services) == 0 {
+		return nil, fmt.Errorf("at least one service required")
 	}
-	docs, err := loader.LoadAllJSON(src)
-	if err != nil {
-		return nil, err
+	if in.BundleVersion == "" || in.SchemaLibraryVersion == "" {
+		return nil, fmt.Errorf("bundle_version and schema_library_version required")
 	}
-	var out []prompt
-	for rel, doc := range docs {
-		if strings.HasSuffix(rel, "README.md") || strings.HasPrefix(rel, ".") {
-			continue
-		}
-		id, _ := doc["id"].(string)
-		if id == "" {
-			return nil, fmt.Errorf("prompt %s missing id", rel)
-		}
-		fname := id + ".json"
-		if err := copyFile(filepath.Join(src, rel), filepath.Join(dst, fname)); err != nil {
-			return nil, err
-		}
-		out = append(out, prompt{
-			ID:   id,
-			File: filepath.Join("prompts", fname),
-			Path: filepath.Join(dst, fname),
-		})
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	return out, nil
-}
 
-func embedServices(ctx context.Context, src, dst, registryBase string, allowPlaceholder bool) ([]service, error) {
-	if err := os.MkdirAll(dst, 0o755); err != nil {
-		return nil, err
+	out := &Manifest{
+		BundleVersion:        in.BundleVersion,
+		SchemaLibraryVersion: in.SchemaLibraryVersion,
+		Build:                in.Build,
+		EnvelopeCostCaps:     in.EnvelopeCostCaps,
 	}
-	docs, err := loader.LoadAllJSON(src)
-	if err != nil {
-		return nil, err
-	}
-	const placeholder = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
-	var out []service
-	for rel, doc := range docs {
-		name, _ := doc["name"].(string)
-		if name == "" {
-			return nil, fmt.Errorf("service-reference %s missing name", rel)
-		}
-		spiffe, _ := doc["spiffe"].(string)
-		digest, _ := doc["source_digest"].(string)
 
-		var payload []byte
-		if digest == placeholder {
-			if !allowPlaceholder {
-				return nil, fmt.Errorf("service %s has placeholder digest; pass --allow-placeholder to permit", name)
+	// Copy services, sorting tools within each.
+	services := make([]loader.Service, len(in.Services))
+	copy(services, in.Services)
+	sort.Slice(services, func(i, j int) bool { return services[i].MCP < services[j].MCP })
+
+	for _, s := range services {
+		tools := make([]loader.Tool, len(s.Tools))
+		copy(tools, s.Tools)
+		sort.Slice(tools, func(i, j int) bool { return tools[i].Name < tools[j].Name })
+
+		ms := ManifestService{MCP: s.MCP}
+		for _, t := range tools {
+			mt := ManifestTool{
+				Name:                t.Name,
+				RequestDigest:       t.RequestDigest,
+				ResponseDigest:      t.ResponseDigest,
+				Write:               t.Write,
+				RequiresPermissions: t.RequiresPermissions,
 			}
-			payload = []byte("{}")
-		} else {
-			ref := registryBase + "/" + name
-			payload, err = PullServiceSchema(ctx, ref, digest)
-			if err != nil {
-				return nil, fmt.Errorf("pull %s: %w", name, err)
-			}
+			ms.Tools = append(ms.Tools, mt)
 		}
-
-		embeddedRel := filepath.Join("service-schemas", name+".json")
-		if err := os.WriteFile(filepath.Join(dst, name+".json"), payload, 0o644); err != nil {
-			return nil, err
-		}
-		out = append(out, service{
-			Name:         name,
-			Spiffe:       spiffe,
-			SourceDigest: digest,
-			EmbeddedFile: embeddedRel,
-		})
+		out.Services = append(out.Services, ms)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+
 	return out, nil
-}
-
-func writeManifest(opts Options, prompts []prompt, services []service) error {
-	type promptEntry struct {
-		ID     string `json:"id"`
-		File   string `json:"file"`
-		Digest string `json:"digest"`
-	}
-	var promptEntries []promptEntry
-	for _, p := range prompts {
-		data, err := os.ReadFile(p.Path)
-		if err != nil {
-			return err
-		}
-		var doc any
-		if err := json.Unmarshal(data, &doc); err != nil {
-			return err
-		}
-		d, err := jcs.Sha256OfJCS(doc)
-		if err != nil {
-			return err
-		}
-		promptEntries = append(promptEntries, promptEntry{ID: p.ID, File: p.File, Digest: d})
-	}
-
-	if opts.SchemaLibVersion == "" {
-		opts.SchemaLibVersion = opts.Version
-	}
-
-	manifest := map[string]any{
-		"bundle_version":         opts.Version,
-		"schema_library_version": opts.SchemaLibVersion,
-		"build": map[string]any{
-			"timestamp":     opts.BuildTime.UTC().Format(time.RFC3339),
-			"source_commit": opts.SourceCommit,
-			"builder_id":    opts.BuilderID,
-		},
-		"envelope_cost_caps": map[string]any{
-			"max_iterations":   50,
-			"max_wallclock_ms": 600000,
-			"max_cost_usd":     10.0,
-		},
-		"prompts":  promptEntries,
-		"services": services,
-	}
-
-	b, err := jcs.Marshal(manifest)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(opts.Output, "bundle-manifest.json"), b, 0o644)
 }
