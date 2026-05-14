@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# Generate Go bindings from schemas/*.json using quicktype.
+# Generate Go bindings from the 4 envelope schemas using quicktype.
 # Requires: quicktype on PATH (npm install -g quicktype).
+#
+# Only the top-level envelope schemas are generated here.  Service-specific
+# schemas (schemas/services/**) and shared primitives (schemas/shared/*) are
+# intentionally excluded — they are consumed by the per-MCP repos directly.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -8,10 +12,16 @@ OUT=generated
 rm -rf "$OUT"
 mkdir -p "$OUT"
 
-shopt -s nullglob globstar
-for schema in ../schemas/**/*.json ../schemas/*.json; do
-  [[ -f "$schema" ]] || continue
-  base=$(basename "$schema" .json | tr '-' '_')
+# Explicit list — mirrors codegen.config.yaml sources.
+declare -A SCHEMAS=(
+  [user_prompt]="../schemas/user-prompt.json"
+  [final_response]="../schemas/final-response.json"
+  [tool_result]="../schemas/tool-result.json"
+  [bundle_manifest]="../schemas/bundle-manifest.json"
+)
+
+for base in user_prompt final_response tool_result bundle_manifest; do
+  schema="${SCHEMAS[$base]}"
   quicktype --src-lang schema --lang go --package types --top-level "$base" --just-types -o "$OUT/${base}.go" "$schema" || true
   # quicktype --just-types omits the package directive; prepend it.
   if [[ -f "$OUT/${base}.go" ]] && ! head -1 "$OUT/${base}.go" | grep -q '^package '; then
