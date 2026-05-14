@@ -31,7 +31,7 @@ echo "=== Build and pack ==="
 make bundle-example
 
 echo "=== Push ==="
-go run ./tools/bundle-builder push ./out/bundle-0.1.0-example.tar.gz "$REGISTRY/ai-security/bundles/example:latest"
+go run ./tools/bundle-builder push ./out/bundle-1.0.0-example.tar.gz "$REGISTRY/ai-security/bundles/example:latest"
 
 echo "=== Fetch + verify via Go loader ==="
 AGENT_PROMPT_OCI_TEST_REGISTRY="$REGISTRY" \
