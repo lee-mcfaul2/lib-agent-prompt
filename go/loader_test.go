@@ -8,6 +8,55 @@ import (
 	"testing"
 )
 
+func TestBundleSchemasKeys(t *testing.T) {
+	b, err := LoadFromDir(filepath.Join("..", ""))
+	if err != nil {
+		t.Fatalf("LoadFromDir: %v", err)
+	}
+	for _, key := range []string{
+		"kb/search.request", "kb/search.response",
+		"kb/fetch.request", "kb/fetch.response",
+		"audit_db/search.request", "audit_db/search.response",
+		"customer/search_customer.request", "customer/search_customer.response",
+	} {
+		if _, ok := b.Schemas[key]; !ok {
+			t.Errorf("missing schema key: %s", key)
+		}
+	}
+}
+
+func TestBundleEnvelopeSchemas(t *testing.T) {
+	b, err := LoadFromDir(filepath.Join("..", ""))
+	if err != nil {
+		t.Fatalf("LoadFromDir: %v", err)
+	}
+	if len(b.UserPromptSchema()) == 0 {
+		t.Error("UserPromptSchema empty")
+	}
+	if len(b.FinalResponseSchema()) == 0 {
+		t.Error("FinalResponseSchema empty")
+	}
+	if len(b.ToolResultSchema()) == 0 {
+		t.Error("ToolResultSchema empty")
+	}
+}
+
+func TestBundleAccessors(t *testing.T) {
+	b, _ := LoadFromDir(filepath.Join("..", ""))
+	req, ok := b.RequestSchema("kb", "search")
+	if !ok || len(req) == 0 {
+		t.Error("RequestSchema kb.search missing")
+	}
+	resp, ok := b.ResponseSchema("kb", "search")
+	if !ok || len(resp) == 0 {
+		t.Error("ResponseSchema kb.search missing")
+	}
+	_, ok = b.RequestSchema("nope", "absent")
+	if ok {
+		t.Error("RequestSchema returned true for unknown tool")
+	}
+}
+
 func TestLoad_ExampleBundle(t *testing.T) {
 	repoRoot := findRepoRoot(t)
 	out := filepath.Join(repoRoot, "out", "go-test-bundle")
