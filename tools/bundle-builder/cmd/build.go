@@ -17,15 +17,15 @@ import (
 )
 
 var (
-	buildSourceDir           string
-	buildOutDir              string
-	buildVersion             string
-	buildSchemaLibVersion    string
-	buildSourceCommit        string
-	buildBuilderID           string
-	buildMaxIterations       int
-	buildMaxWallclockMs      int
-	buildMaxCostUSD          float64
+	buildSourceDir        string
+	buildOutDir           string
+	buildVersion          string
+	buildSchemaLibVersion string
+	buildSourceCommit     string
+	buildBuilderID        string
+	buildMaxIterations    int
+	buildMaxWallclockMs   int
+	buildMaxCostUSD       float64
 )
 
 var buildCmd = &cobra.Command{

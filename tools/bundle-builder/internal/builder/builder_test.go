@@ -14,9 +14,9 @@ func sampleServices() []loader.Service {
 			MCP: "kb",
 			Tools: []loader.Tool{
 				{
-					Name:           "search",
-					RequestDigest:  "sha256:" + hex64(),
-					ResponseDigest: "sha256:" + hex64(),
+					Name:                "search",
+					RequestDigest:       "sha256:" + hex64(),
+					ResponseDigest:      "sha256:" + hex64(),
 					RequiresPermissions: []string{"kb:read"},
 				},
 				{
@@ -42,9 +42,9 @@ func TestBuildManifestShape(t *testing.T) {
 		BundleVersion:        "1.0.0",
 		SchemaLibraryVersion: "1.0.0",
 		Build: BuildProvenance{
-			Timestamp:     time.Date(2026, 5, 13, 0, 0, 0, 0, time.UTC),
-			SourceCommit:  "abc1234",
-			BuilderID:     "bundle-builder-test",
+			Timestamp:    time.Date(2026, 5, 13, 0, 0, 0, 0, time.UTC),
+			SourceCommit: "abc1234",
+			BuilderID:    "bundle-builder-test",
 		},
 		EnvelopeCostCaps: EnvelopeCostCaps{
 			MaxIterations:  8,
