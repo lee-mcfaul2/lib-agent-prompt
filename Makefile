@@ -2,17 +2,15 @@
 
 schemas-validate:
 	@echo "validating schemas..."
-	@go run ./tools/bundle-builder validate --schema-lib ./schemas
+	@go run ./tools/bundle-builder validate --source-dir .
 
 bundle-example:
 	@echo "building example bundle..."
 	@go run ./tools/bundle-builder build \
-		--schema-lib ./schemas \
-		--prompts ./prompts/example \
-		--services ./schemas/service-references \
-		--output ./out/bundle-0.1.0-example \
-		--version 0.1.0-example \
-		--allow-placeholder
+		--source-dir . \
+		--out-dir ./out/bundle-0.1.0-example \
+		--bundle-version 0.1.0-example \
+		--builder-id local-make
 	@go run ./tools/bundle-builder pack ./out/bundle-0.1.0-example
 
 verify-example:

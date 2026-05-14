@@ -3,6 +3,7 @@ go 1.24.4
 use (
 	./go
 	./pkg/verify
+	./tests/e2e/validate-fixture
 	./tools/bundle-builder
 	./tools/verifier
 )

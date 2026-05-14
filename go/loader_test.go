@@ -63,12 +63,10 @@ func TestLoad_ExampleBundle(t *testing.T) {
 	tarball := out + ".tar.gz"
 
 	must(t, repoRoot, "go", "run", "./tools/bundle-builder", "build",
-		"--schema-lib", "./schemas",
-		"--prompts", "./prompts/example",
-		"--services", "./schemas/service-references",
-		"--output", out,
-		"--version", "0.1.0-go-test",
-		"--allow-placeholder",
+		"--source-dir", ".",
+		"--out-dir", out,
+		"--bundle-version", "0.1.0-go-test",
+		"--builder-id", "go-test",
 	)
 	must(t, repoRoot, "go", "run", "./tools/bundle-builder", "pack", out)
 

@@ -1,0 +1,6 @@
+{
+  "schema_uuid": "8d3c5a90-2a91-4f6e-9b73-1f4d6e5c2b10",
+  "prompt_uuid": "c9e1f4b8-3d7a-4e25-9bcd-7e2a3f1d8b04",
+  "text": "How many customers signed up last week?",
+  "model": "claude-sonnet-4-6"
+}
